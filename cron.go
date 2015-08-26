@@ -6,6 +6,7 @@ import (
 )
 
 type cbF func() error
+type errCbF func(error)
 
 type task struct {
 	dur time.Duration
@@ -14,7 +15,7 @@ type task struct {
 
 type cron struct {
 	tasks chan task
-	errCb func(error)
+	errCb errCbF
 	sync.Mutex
 }
 
@@ -30,37 +31,45 @@ func NewCron() *cron {
 var defaultCron = NewCron()
 
 // Every schedules execution of callback(s)
-func Every(dur time.Duration, cbs ...cbF) {
-	defaultCron.Every(dur, cbs...)
+func Every(dur time.Duration, cbs ...cbF) *cron {
+	return defaultCron.Every(dur, cbs...)
 }
 
 // OnError registers task error handler
-func OnError(cb func(error)) {
-	defaultCron.OnError(cb)
+func OnError(cb errCbF) *cron {
+	return defaultCron.OnError(cb)
 }
 
 // Every schedules execution of callback(s)
-func (c *cron) Every(dur time.Duration, cbs ...cbF) {
+func (c *cron) Every(dur time.Duration, cbs ...cbF) *cron {
 	for _, cb := range cbs {
 		c.tasks <- task{dur, cb}
 	}
+	return c
 }
 
 // OnError registers task error handler
-func (c *cron) OnError(cb func(error)) {
+func (c *cron) OnError(cb errCbF) *cron {
 	c.errCb = cb
+	return c
 }
 
 func (c *cron) loop() {
 	for t := range c.tasks {
-		go c.run(t)
+		go c.taskLoop(t)
 	}
 }
 
-func (c *cron) run(t task) {
+func (c *cron) taskLoop(t task) {
+	t.run(c.errCb)
 	for range time.NewTicker(t.dur).C {
-		if err := t.cb(); err != nil && c.errCb != nil {
-			c.errCb(err)
-		}
+		t.run(c.errCb)
+	}
+}
+
+func (t task) run(errCb errCbF) {
+	err := t.cb()
+	if err != nil && errCb != nil {
+		errCb(err)
 	}
 }

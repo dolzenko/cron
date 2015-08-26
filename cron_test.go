@@ -40,6 +40,14 @@ var _ = Describe("Cron", func() {
 			return cnt
 		}).Should(BeNumerically(">", 1))
 	})
+
+	It("should run task immediately", func() {
+		cnt := 0
+		subject.Every(time.Hour, func() error { cnt++; return nil })
+		Eventually(func() int {
+			return cnt
+		}).Should(Equal(1))
+	})
 })
 
 // --------------------------------------------------------------------
